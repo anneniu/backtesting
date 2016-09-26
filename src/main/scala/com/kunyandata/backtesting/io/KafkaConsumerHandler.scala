@@ -32,7 +32,7 @@ class KafkaConsumerHandler(zookeeper: String, groupId: String, topic: String) {
     props.put("auto.offset.reset", "largest")
     props.put("zookeeper.session.timeout.ms", "400")
     props.put("zookeeper.sync.time.ms", "200")
-    props.put("auto.commit.interval.ms", "1000")
+    props.put("auto.commit.interval.ms", "200")
 
     new ConsumerConfig(props)
   }

@@ -55,6 +55,7 @@ object Scheduler {
 
           val uid = (jsonValue \ "uid").as[Long]
           val session = (jsonValue \ "session").as[Long]
+          val pushTime = (jsonValue \ "push_time").as[Long]
           val condition = (jsonValue \ "condition").as[String]
           val startDate = (jsonValue \ "start_time").as[String]
           val endDate = (jsonValue \ "end_time").as[String]
@@ -73,6 +74,7 @@ object Scheduler {
           val resultValue = Json.obj(
             "uid" -> uid,
             "session" -> session,
+            "push_time" -> pushTime,
             "start_time" -> startDate,
             "end_time" -> endDate,
             "stocks" -> result._1,
@@ -101,7 +103,7 @@ object Scheduler {
 
   def filter(queryMap: Map[Int, String], startDate: String, endDate: String): (mutable.ListBuffer[String], String) = {
 
-    val wrongOption = queryMap.getOrElse(-1, "")
+    var wrongOption = queryMap.getOrElse(-1, "")
     val startOffset = CommonUtil.getOffset(startDate)
     val endOffset = CommonUtil.getOffset(endDate)
 
@@ -155,6 +157,11 @@ object Scheduler {
             filters += SimpleUnionFilter(prefix, values(0), startOffset, endOffset)
           case "simple" =>
             filters += SimpleFilter(prefix, values(0))
+          case "standard_deviation" =>
+            if (startOffset == endOffset)
+              filters += StandardDeviationFilter(prefix, values(0).toDouble, values(1).toInt, values(2).toInt, startOffset)
+            else
+              wrongOption += ",查询标准差的起始日期必须与结束日期相同"
           case _ =>
             println("unknown")
         }

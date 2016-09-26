@@ -12,7 +12,11 @@ object Rules {
     */
   def getNumbers(query: String): Array[String] = {
 
-    val temp = query.replaceAll("[\\u4e00-\\u9fa5]", " ").replaceAll("[a-zA-Z~]", " ").trim.split(" ")
+    val temp = query
+      .replaceAll("[\\u4e00-\\u9fa5]", " ")
+      .replaceAll("[a-zA-Z~]", " ")
+      .replaceAll("[（）]", "")
+      .trim.split(" ")
 
     temp.filter(_.length > 0)
   }
@@ -116,15 +120,15 @@ object Rules {
       case "流通股本等于x万" => (102, equel(queryNumbers(0)))
       case "流通股本大于x万小于x万" => (102, biggerAndSmaller(queryNumbers.slice(0, 2)))
 
-      case "总市值大于x亿" => (103, bigger(queryNumbers(0)))
-      case "总市值小于x亿" => (103, smaller(queryNumbers(0)))
-      case "总市值等于x亿" => (103, equel(queryNumbers(0)))
-      case "总市值大于x亿小于x亿" => (103, biggerAndSmaller(queryNumbers.slice(0, 2)))
+      case "总市值大于x万" => (103, bigger(queryNumbers(0)))
+      case "总市值小于x万" => (103, smaller(queryNumbers(0)))
+      case "总市值等于x万" => (103, equel(queryNumbers(0)))
+      case "总市值大于x万小于x万" => (103, biggerAndSmaller(queryNumbers.slice(0, 2)))
 
-      case "流通市值大于x亿" => (104, bigger(queryNumbers(0)))
-      case "流通市值小于x亿" => (104, smaller(queryNumbers(0)))
-      case "流通市值等于x亿" => (104, equel(queryNumbers(0)))
-      case "流通市值大于x亿小于x亿" => (104, biggerAndSmaller(queryNumbers.slice(0, 2)))
+      case "流通市值大于x万" => (104, bigger(queryNumbers(0)))
+      case "流通市值小于x万" => (104, smaller(queryNumbers(0)))
+      case "流通市值等于x万" => (104, equel(queryNumbers(0)))
+      case "流通市值大于x万小于x万" => (104, biggerAndSmaller(queryNumbers.slice(0, 2)))
 
       case "流通比例大于x%" => (105, bigger(queryNumbers(0)))
       case "流通比例小于x%" => (105, smaller(queryNumbers(0)))
@@ -199,6 +203,8 @@ object Rules {
       case "收益率小于x%" => (209, smaller(queryNumbers(0)))
       case "收益率等于x%" => (209, equel(queryNumbers(0)))
       case "收益率大于x%小于x%" => (209, biggerAndSmaller(queryNumbers.slice(0, 2)))
+
+      case "日均查看热度离均差（MAx）大于x倍前x天日均热度标准差" => (210, s"${queryNumbers(1)},${queryNumbers(0)},${queryNumbers(2)}")
 
       case "资金流入大于x万" => (301, bigger(queryNumbers(0)))
       case "资金流入小于x万" => (301, smaller(queryNumbers(0)))
@@ -286,12 +292,12 @@ object Rules {
       case "查看热度连续x天超过x" => (15005, s"${queryNumbers(0)},${queryNumbers(1)},${Int.MaxValue}")
       case "查看热度连续x天以上超过x" => (15005, s"${queryNumbers(0)},${queryNumbers(1)},${Int.MaxValue}")
 
-      case _ => (-1, s"查询条件错误“$query”：条件不存在或存在非法字符")
+      case _ => (-1, query)
     }
 
     resultTemp._2.startsWith("error:") match {
 
-      case true => (-1, s"查询条件错误“$query”：${resultTemp._2.replace("error:", "")}")
+      case true => (-1, query)
       case _ => resultTemp
     }
   }
