@@ -35,17 +35,15 @@ object Configuration {
 
     //kafka
     val kafkaRoot = doc.getElementsByTagName("kafka").item(0).asInstanceOf[Element]
-    val kafkaIp = kafkaRoot.getElementsByTagName("ip").item(0).getTextContent
     val zookeeper = kafkaRoot.getElementsByTagName("zookeeper").item(0).getTextContent
     val groupId = kafkaRoot.getElementsByTagName("groupId").item(0).getTextContent
     val brokerList = kafkaRoot.getElementsByTagName("brokerList").item(0).getTextContent
     val receiveTopic = kafkaRoot.getElementsByTagName("receiveTopic").item(0).getTextContent
     val sendTopic = kafkaRoot.getElementsByTagName("sendTopic").item(0).getTextContent
 
-    kafka.put("ip", kafkaIp)
-    kafka.put("zookeeper", kafkaIp + ":" + zookeeper)
+    kafka.put("zookeeper", zookeeper)
     kafka.put("groupId", groupId)
-    kafka.put("brokerList", kafkaIp + ":" + brokerList)
+    kafka.put("brokerList", brokerList)
     kafka.put("receiveTopic", receiveTopic)
     kafka.put("sendTopic", sendTopic)
 

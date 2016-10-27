@@ -1,10 +1,9 @@
-package com.kunyandata.backtesting.filter.common
+package com.kunyandata.backtesting.filter
 
 import java.util.concurrent.{Callable, FutureTask}
 
-import com.kunyandata.backtesting.filter.Filter
 import com.kunyandata.backtesting.io.RedisHandler
-import com.kunyandata.backtesting.util.DateUtil
+import com.kunyandata.backtesting.util.CommonUtil
 
 import scala.collection.mutable
 
@@ -14,18 +13,18 @@ import scala.collection.mutable
   * Created by YangShuai
   * Created on 2016/8/24.
   */
-class ContiValueFilter private(prefix: String, value: Int, days: Int, start: Int, end: Int) extends Filter {
+class ContiValueFilter private(prefix: String, days: Int, min: Double, max: Double, start: Int, end: Int) extends Filter {
 
   override def filter(): List[String] = {
 
     val resultSet = mutable.Set[String]()
     val map = mutable.Map[String, Int]()
+    val jedis = RedisHandler.getInstance().getJedis
 
     for (i <- start to end) {
 
-      val key = prefix + DateUtil.getDateStr(i)
-      val jedis = RedisHandler.getInstance().getJedis
-      val result = jedis.zrangeByScore(key, value, Double.MaxValue)
+      val key = prefix + CommonUtil.getDateStr(i)
+      val result = jedis.zrangeByScore(key, min, max)
 
       map.foreach( x => {
 
@@ -50,6 +49,8 @@ class ContiValueFilter private(prefix: String, value: Int, days: Int, start: Int
 
     }
 
+    jedis.close()
+
     resultSet.toList
   }
 
@@ -57,9 +58,9 @@ class ContiValueFilter private(prefix: String, value: Int, days: Int, start: Int
 
 object ContiValueFilter {
 
-  def apply(prefix: String, value: Int, days: Int, start: Int, end: Int): ContiValueFilter = {
+  def apply(prefix: String, days: Int, min: Double, max: Double, start: Int, end: Int): ContiValueFilter = {
 
-    val filter = new ContiValueFilter(prefix, value, days, start, end)
+    val filter = new ContiValueFilter(prefix, days, min, max, start, end)
 
     filter.futureTask = new FutureTask[List[String]](new Callable[List[String]] {
       override def call(): List[String] = filter.filter()

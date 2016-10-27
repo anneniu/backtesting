@@ -1,11 +1,18 @@
 package com.kunyandata.backtesting
 
+import java.util.NoSuchElementException
 import java.util.concurrent.{ExecutorService, Executors}
 
-import com.kunyandata.backtesting.config.Configuration
-import com.kunyandata.backtesting.filter.common.{ContiRankFilter, ContiValueFilter}
+import com.kunyandata.backtesting.config.{FilterType, Configuration}
+import com.kunyandata.backtesting.filter._
 import com.kunyandata.backtesting.io.{RedisHandler, KafkaProducerHandler, KafkaConsumerHandler}
 import com.kunyandata.backtesting.logger.BKLogger
+import com.kunyandata.backtesting.parser.Query
+import com.kunyandata.backtesting.util.CommonUtil
+import play.api.libs.json.{JsObject, Json}
+
+import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 
 /**
   * Created by YangShuai
@@ -39,12 +46,66 @@ object Scheduler {
 
       while (it.hasNext()) {
 
-        val message = new String(it.next().message())
-        System.out.println(message)
-        println(System.currentTimeMillis())
-        val result = filter()
-        println("result: " + result)
-        producerHandler.sendMessage(result)
+        try {
+
+          val beginTime = System.currentTimeMillis()
+          val message = new String(it.next().message())
+          val jsonValue = Json.parse(message)
+
+          val uid = (jsonValue \ "uid").as[Long]
+          val session = (jsonValue \ "session").as[Long]
+          val pushTime = (jsonValue \ "push_time").as[Long]
+          val condition = (jsonValue \ "condition").as[String]
+          val startDate = (jsonValue \ "start_time").as[String]
+          val endDate = (jsonValue \ "end_time").as[String]
+          val baseSession = (jsonValue \ "base_session").getOrElse(null)
+          val search_type = (jsonValue \ "search_type").getOrElse(null)
+
+          val queryMap = Query.parse(condition)
+
+          val result = filter(queryMap, startDate, endDate)
+
+          var rightOption = condition
+
+          result._2.split(",").foreach(x => {
+            rightOption = rightOption.replaceFirst(x, "")
+          })
+
+          val finishTime = System.currentTimeMillis()
+
+          var resultValue = Json.obj(
+            "uid" -> uid,
+            "session" -> session,
+            "push_time" -> pushTime,
+            "start_time" -> startDate,
+            "end_time" -> endDate,
+            "stocks" -> result._1,
+            "wrong_condition" -> result._2,
+            "right_condition" -> rightOption,
+            "begin_time_stamp" -> beginTime,
+            "finish_time_stamp" -> finishTime,
+            "cost_time" -> (finishTime - beginTime)
+          )
+
+          if (baseSession != null) {
+            resultValue = resultValue ++ Json.obj("base_session" -> baseSession)
+          }
+
+          if (search_type != null && search_type.toString == "2") {
+            resultValue = resultValue ++ Json.obj("search_type" -> search_type)
+          }
+
+          val sendMessage = Json.stringify(resultValue)
+
+          BKLogger.warn(message)
+          BKLogger.warn(sendMessage)
+          producerHandler.sendMessage(sendMessage)
+
+        } catch {
+          case e: Exception =>
+            e.printStackTrace()
+        }
+
       }
 
     }
@@ -54,25 +115,92 @@ object Scheduler {
     producerHandler.close()
   }
 
-  def filter(): String = {
+  def filter(queryMap: Map[Int, String], startDate: String, endDate: String): (mutable.ListBuffer[String], String) = {
 
-    val valueFilter = ContiValueFilter("count_heat_", 1000, 10, -10, -1)
-    val diffFilter = ContiValueFilter("diff_heat_", 10, 3, -5, -1)
-    val rankFilter = ContiRankFilter("count_heat_", 100, 3, -5, -1)
+    var wrongOption = queryMap.getOrElse(-1, "")
+    val startOffset = CommonUtil.getOffset(startDate)
+    val endOffset = CommonUtil.getOffset(endDate)
 
-    threadPool.execute(valueFilter.getFutureTask)
-    threadPool.execute(diffFilter.getFutureTask)
-    threadPool.execute(rankFilter.getFutureTask)
+    var filters = ListBuffer[Filter]()
+    var stockCodes = mutable.ListBuffer[String]()
 
-    val valueList = valueFilter.getResult
-    val diffList = diffFilter.getResult
-    val rankList = rankFilter.getResult
+    queryMap.foreach(pair => {
 
-    println("value size: " + valueList.size)
-    println("diff size: " + diffList.size)
-    println("rank size: " + rankList.size)
+      var prefix = ""
+      var filterType = ""
 
-    valueList.intersect(diffList).intersect(rankList).mkString(",")
+      val key = pair._1
+
+      if (key > 0) {
+
+        val values = pair._2.split(",")
+
+        try {
+
+          val infos = FilterType.apply(key).toString.split("\\|")
+          prefix = infos(0)
+          filterType = infos(1)
+
+        } catch {
+
+          case e: NoSuchElementException =>
+          case e: IndexOutOfBoundsException =>
+            e.printStackTrace()
+            println(FilterType.apply(key).toString)
+
+        }
+
+        try {
+          println("Value: " + FilterType.apply(key).toString)
+        } catch {
+          case e: NoSuchElementException =>
+            println("Unknown enum id: " + key)
+        }
+
+        filterType match {
+          case "all_days_value" =>
+            filters += AllDayValueFilter(prefix, values(0).toDouble, values(1).toDouble, startOffset, endOffset)
+          case "conti_value" =>
+            filters += ContiValueFilter(prefix, values(0).toInt, values(1).toDouble, values(2).toDouble, startOffset, endOffset)
+          case "conti_rank" =>
+            filters += ContiRankFilter(prefix, values(0).toInt, values(1).toInt, startOffset, endOffset)
+          case "single_value" =>
+            filters += SingleValueFilter(prefix, values(0).toDouble, values(1).toDouble)
+          case "sum_value" =>
+            filters += SumValueFilter(prefix, values(0).toDouble, values(1).toDouble, startOffset, endOffset)
+          case "direct" =>
+            filters += SimpleUnionFilter(prefix, values(0), startOffset, endOffset)
+          case "simple" =>
+            filters += SimpleFilter(prefix, values(0))
+          case "standard_deviation" =>
+            if (startOffset == endOffset) {
+              filters += StandardDeviationFilter(prefix, values(0).toDouble, values(1).toInt, values(2).toInt, startOffset)
+            } else {
+              filters += VariousDateStandardDeviationFilter(prefix, values(0).toDouble, values(1).toInt, values(2).toInt, startOffset, endOffset)
+            }
+          case "hour_standard_deviation" =>
+            filters += StandardDeviationFilterByHour(prefix, values(2).toDouble, values(3).toInt, values(4).toInt, values(0).toLong, values(1).toLong, startOffset, endOffset)
+          case _ =>
+            println("unknown")
+        }
+
+      }
+
+    })
+
+    filters.foreach(filter =>
+      threadPool.execute(filter.getFutureTask)
+    )
+
+    for (i <- filters.indices) {
+      if (i == 0) {
+        stockCodes ++= filters(i).getResult
+      } else {
+        stockCodes = stockCodes.intersect(filters(i).getResult)
+      }
+    }
+
+    (stockCodes, wrongOption)
   }
 
 }

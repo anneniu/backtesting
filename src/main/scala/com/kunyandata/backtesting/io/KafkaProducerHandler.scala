@@ -14,9 +14,7 @@ class KafkaProducerHandler(brokerList: String, topic: String) {
 
   def sendMessage(message: String): Unit = {
     val keyedMessage = new KeyedMessage[String, String](topic, message)
-    println(System.currentTimeMillis())
     producer.send(keyedMessage)
-    println(System.currentTimeMillis())
   }
 
   def close(): Unit = producer.close()
@@ -33,6 +31,7 @@ object KafkaProducerHandler {
     props.put("metadata.broker.list", brokerList)
     props.put("serializer.class", "kafka.serializer.StringEncoder")
     props.put("producer.type", "async")
+    props.put("queue.buffering.max.ms", "200")
 
     val config = new ProducerConfig(props)
     handler.producer = new Producer[String, String](config)
@@ -43,4 +42,5 @@ object KafkaProducerHandler {
 
     handler
   }
+
 }
