@@ -17,7 +17,7 @@ class QueryTest extends FlatSpec with Matchers {
     map.keySet.foreach(key => {
 
       println(FilterType.apply(key).toString)
-      map.get(key).get should be("7,0.5,1")
+      map(key) should be("7,0.5,1")
     })
 
   }

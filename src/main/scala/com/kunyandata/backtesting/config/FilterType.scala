@@ -29,6 +29,7 @@ object FilterType extends Enumeration {
   val SharePrice = Value(208, "share_price_|all_days_value") // 股价
   val ChangePercent = Value(209, "change_percent_|all_days_value") // 涨跌幅，收益率
   val StandardDeviation = Value(210, "count_heat_|standard_deviation") //热度标准差
+  val StandardDeviationWithHour = Value(212,"count_heat_hour_|hour_standard_deviation")
 
   // 股票相关新闻访问量和股票相关新闻转载量
   val Visit = Value(401, "visit_|all_days_value") // 股票相关新闻的日访问量

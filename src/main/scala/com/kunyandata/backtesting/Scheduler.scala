@@ -9,7 +9,7 @@ import com.kunyandata.backtesting.io.{RedisHandler, KafkaProducerHandler, KafkaC
 import com.kunyandata.backtesting.logger.BKLogger
 import com.kunyandata.backtesting.parser.Query
 import com.kunyandata.backtesting.util.CommonUtil
-import play.api.libs.json.Json
+import play.api.libs.json.{JsObject, Json}
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -50,7 +50,6 @@ object Scheduler {
 
           val beginTime = System.currentTimeMillis()
           val message = new String(it.next().message())
-          println(message)
           val jsonValue = Json.parse(message)
 
           val uid = (jsonValue \ "uid").as[Long]
@@ -59,9 +58,11 @@ object Scheduler {
           val condition = (jsonValue \ "condition").as[String]
           val startDate = (jsonValue \ "start_time").as[String]
           val endDate = (jsonValue \ "end_time").as[String]
+          val baseSession = (jsonValue \ "base_session").getOrElse(null)
+          val search_type = (jsonValue \ "search_type").getOrElse(null)
 
           val queryMap = Query.parse(condition)
-          System.out.println(queryMap)
+
           val result = filter(queryMap, startDate, endDate)
 
           var rightOption = condition
@@ -71,7 +72,8 @@ object Scheduler {
           })
 
           val finishTime = System.currentTimeMillis()
-          val resultValue = Json.obj(
+
+          var resultValue = Json.obj(
             "uid" -> uid,
             "session" -> session,
             "push_time" -> pushTime,
@@ -85,7 +87,19 @@ object Scheduler {
             "cost_time" -> (finishTime - beginTime)
           )
 
-          producerHandler.sendMessage(Json.stringify(resultValue))
+          if (baseSession != null) {
+            resultValue = resultValue ++ Json.obj("base_session" -> baseSession)
+          }
+
+          if (search_type != null && search_type.toString == "2") {
+            resultValue = resultValue ++ Json.obj("search_type" -> search_type)
+          }
+
+          val sendMessage = Json.stringify(resultValue)
+
+          BKLogger.warn(message)
+          BKLogger.warn(sendMessage)
+          producerHandler.sendMessage(sendMessage)
 
         } catch {
           case e: Exception =>
@@ -116,6 +130,7 @@ object Scheduler {
       var filterType = ""
 
       val key = pair._1
+
       if (key > 0) {
 
         val values = pair._2.split(",")
@@ -158,10 +173,13 @@ object Scheduler {
           case "simple" =>
             filters += SimpleFilter(prefix, values(0))
           case "standard_deviation" =>
-            if (startOffset == endOffset)
+            if (startOffset == endOffset) {
               filters += StandardDeviationFilter(prefix, values(0).toDouble, values(1).toInt, values(2).toInt, startOffset)
-            else
-              wrongOption += ",查询标准差的起始日期必须与结束日期相同"
+            } else {
+              filters += VariousDateStandardDeviationFilter(prefix, values(0).toDouble, values(1).toInt, values(2).toInt, startOffset, endOffset)
+            }
+          case "hour_standard_deviation" =>
+            filters += StandardDeviationFilterByHour(prefix, values(2).toDouble, values(3).toInt, values(4).toInt, values(0).toLong, values(1).toLong, startOffset, endOffset)
           case _ =>
             println("unknown")
         }

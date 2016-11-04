@@ -1,5 +1,7 @@
 package com.kunyandata.backtesting.parser
 
+import com.kunyandata.backtesting.util.CommonUtil
+
 /**
   * Created by QQ on 2016/8/30.
   */
@@ -13,12 +15,29 @@ object Rules {
   def getNumbers(query: String): Array[String] = {
 
     val temp = query
-      .replaceAll("[\\u4e00-\\u9fa5]", " ")
-      .replaceAll("[a-zA-Z~]", " ")
-      .replaceAll("[（）]", "")
+      .replaceAll("[^\\-\\.0-9万亿\\:]", " ")
       .trim.split(" ")
 
-    temp.filter(_.length > 0)
+    temp.filter(x => x.length > 0 && x.replaceAll("[万亿]", "").length > 0)
+  }
+
+  /**
+    * 将非阿拉伯数字字符表现的数值转化为阿拉伯数字
+    * @param num 带单位的数值
+    * @return
+    */
+  def valueProgress(num: String): Double = {
+
+    if (num.contains("万")) {
+
+      num.replaceAll("万", "").toDouble
+    } else if (num.contains("亿")) {
+
+      num.replaceAll("亿", "").toDouble * 10000
+    } else {
+
+      num.toDouble
+    }
   }
 
   /**
@@ -28,12 +47,10 @@ object Rules {
     */
   def bigger(number: String): String = {
 
-    number.contains("%") match {
-
-      case true => s"${number.replaceAll("%", "").toDouble},${Int.MaxValue}" // 保留百分比的解析
-      case _ => s"$number,${Int.MaxValue}"
-    }
+    val result = valueProgress(number)
+    s"$result,${Int.MaxValue}"
   }
+
   /**
     * 小于类型数据转化为区间表示
     * @param number 数值
@@ -41,11 +58,8 @@ object Rules {
     */
   def smaller(number: String): String = {
 
-    number.contains("%") match {
-
-      case true => s"${Int.MinValue},${number.replaceAll("%", "").toDouble}" // 保留百分比的解析
-      case _ => s"${Int.MinValue},$number"
-    }
+    val result = valueProgress(number)
+    s"${Int.MinValue},$result"
   }
   /**
     * 等于类型数据转化为区间表示
@@ -54,12 +68,8 @@ object Rules {
     */
   def equel(number: String): String = {
 
-    number.contains("%") match {
-
-      case true => s"${number.replaceAll("%", "").toDouble}" +
-        s",${number.replaceAll("%", "").toDouble}"  // 保留百分比的解析
-      case _ => s"$number,$number"
-    }
+    val result = valueProgress(number)
+    s"$result,$result"
   }
 
   /**
@@ -75,11 +85,8 @@ object Rules {
 
         val nums = number.map(num => {
 
-          num.contains("%") match {
-
-            case true => num.replaceAll("%", "").toDouble // 保留百分比的解析
-            case _ => num.toDouble
-          }
+          val result = valueProgress(num)
+          result.toDouble
         })
 
         nums(0) <= nums(1) match {
@@ -89,6 +96,27 @@ object Rules {
         }
 
       case _ =>  "error:条件数值个数错误"
+    }
+  }
+
+  /**
+    * 处理时间字符串
+    * @param number 时间字符串
+    * @return
+    */
+  def dateProcess(number: Array[String]) = {
+
+    val result = number.map(CommonUtil.getDateTimeStamp)
+
+    result(0) <= result(1) match {
+
+      case true => result(1) - result(0) <= 47L * 60 * 60 * 1000 match {
+
+        case true => s"${result(0)},${result(1)}"
+        case false => "error:日期跨度时间超过47小时"
+      }
+
+      case false => "error:日期数值大小关系错误"
     }
   }
 
@@ -104,31 +132,31 @@ object Rules {
 
     queryNumbers.foreach(num => {
 
-      queryTemplate = queryTemplate.replaceFirst(num.replace("%", ""), "x")
+      queryTemplate = queryTemplate.replaceFirst(num, "x")
     })
 
     val resultTemp = queryTemplate match {
 
       // 基本面数据
-      case "总股本大于x万" => (101, bigger(queryNumbers(0)))
-      case "总股本小于x万" => (101, smaller(queryNumbers(0)))
-      case "总股本等于x万" => (101, equel(queryNumbers(0)))
-      case "总股本大于x万小于x万" => (101, biggerAndSmaller(queryNumbers.slice(0, 2)))
+      case "总股本大于x" => (101, bigger(queryNumbers(0)))
+      case "总股本小于x" => (101, smaller(queryNumbers(0)))
+      case "总股本等于x" => (101, equel(queryNumbers(0)))
+      case "总股本大于x小于x" => (101, biggerAndSmaller(queryNumbers.slice(0, 2)))
 
-      case "流通股本大于x万" => (102, bigger(queryNumbers(0)))
-      case "流通股本小于x万" => (102, smaller(queryNumbers(0)))
-      case "流通股本等于x万" => (102, equel(queryNumbers(0)))
-      case "流通股本大于x万小于x万" => (102, biggerAndSmaller(queryNumbers.slice(0, 2)))
+      case "流通股本大于x" => (102, bigger(queryNumbers(0)))
+      case "流通股本小于x" => (102, smaller(queryNumbers(0)))
+      case "流通股本等于x" => (102, equel(queryNumbers(0)))
+      case "流通股本大于x小于x" => (102, biggerAndSmaller(queryNumbers.slice(0, 2)))
 
-      case "总市值大于x万" => (103, bigger(queryNumbers(0)))
-      case "总市值小于x万" => (103, smaller(queryNumbers(0)))
-      case "总市值等于x万" => (103, equel(queryNumbers(0)))
-      case "总市值大于x万小于x万" => (103, biggerAndSmaller(queryNumbers.slice(0, 2)))
+      case "总市值大于x" => (103, bigger(queryNumbers(0)))
+      case "总市值小于x" => (103, smaller(queryNumbers(0)))
+      case "总市值等于x" => (103, equel(queryNumbers(0)))
+      case "总市值大于x小于x" => (103, biggerAndSmaller(queryNumbers.slice(0, 2)))
 
-      case "流通市值大于x万" => (104, bigger(queryNumbers(0)))
-      case "流通市值小于x万" => (104, smaller(queryNumbers(0)))
-      case "流通市值等于x万" => (104, equel(queryNumbers(0)))
-      case "流通市值大于x万小于x万" => (104, biggerAndSmaller(queryNumbers.slice(0, 2)))
+      case "流通市值大于x" => (104, bigger(queryNumbers(0)))
+      case "流通市值小于x" => (104, smaller(queryNumbers(0)))
+      case "流通市值等于x" => (104, equel(queryNumbers(0)))
+      case "流通市值大于x小于x" => (104, biggerAndSmaller(queryNumbers.slice(0, 2)))
 
       case "流通比例大于x%" => (105, bigger(queryNumbers(0)))
       case "流通比例小于x%" => (105, smaller(queryNumbers(0)))
@@ -140,20 +168,20 @@ object Rules {
       case "十大股东持股比例等于x%" => (106, equel(queryNumbers(0)))
       case "十大股东持股比例大于x%小于x%" => (106, biggerAndSmaller(queryNumbers.slice(0, 2)))
 
-      case "股东户数大于x万" => (107, bigger(queryNumbers(0)))
-      case "股东户数小于x万" => (107, smaller(queryNumbers(0)))
-      case "股东户数等于x万" => (107, equel(queryNumbers(0)))
-      case "股东户数大于x万小于x万" => (107, biggerAndSmaller(queryNumbers.slice(0, 2)))
+      case "股东户数大于x" => (107, bigger(queryNumbers(0)))
+      case "股东户数小于x" => (107, smaller(queryNumbers(0)))
+      case "股东户数等于x" => (107, equel(queryNumbers(0)))
+      case "股东户数大于x小于x" => (107, biggerAndSmaller(queryNumbers.slice(0, 2)))
 
-      case "户均持股数大于x万" => (108, bigger(queryNumbers(0)))
-      case "户均持股数小于x万" => (108, smaller(queryNumbers(0)))
-      case "户均持股数等于x万" => (108, equel(queryNumbers(0)))
-      case "户均持股数大于x万小于x万" => (108, biggerAndSmaller(queryNumbers.slice(0, 2)))
+      case "户均持股数大于x" => (108, bigger(queryNumbers(0)))
+      case "户均持股数小于x" => (108, smaller(queryNumbers(0)))
+      case "户均持股数等于x" => (108, equel(queryNumbers(0)))
+      case "户均持股数大于x小于x" => (108, biggerAndSmaller(queryNumbers.slice(0, 2)))
 
-      case "机构持股数大于x万" => (109, bigger(queryNumbers(0)))
-      case "机构持股数小于x万" => (109, smaller(queryNumbers(0)))
-      case "机构持股数等于x万" => (109, equel(queryNumbers(0)))
-      case "机构持股数大于x万小于x万" => (109, biggerAndSmaller(queryNumbers.slice(0, 2)))
+      case "机构持股数大于x" => (109, bigger(queryNumbers(0)))
+      case "机构持股数小于x" => (109, smaller(queryNumbers(0)))
+      case "机构持股数等于x" => (109, equel(queryNumbers(0)))
+      case "机构持股数大于x小于x" => (109, biggerAndSmaller(queryNumbers.slice(0, 2)))
 
       case "高管增股" => (40001, "高管增股")
       case "高管减股" => (40001, "高管减股")
@@ -184,15 +212,15 @@ object Rules {
       case "换手率等于x%" => (205, equel(queryNumbers(0)))
       case "换手率大于x%小于x%" => (205, biggerAndSmaller(queryNumbers.slice(0, 2)))
 
-      case "成交量大于x万" => (206, bigger(queryNumbers(0)))
-      case "成交量小于x万" => (206, smaller(queryNumbers(0)))
-      case "成交量等于x万" => (206, equel(queryNumbers(0)))
-      case "成交量大于x万小于x万" => (206, biggerAndSmaller(queryNumbers.slice(0, 2)))
+      case "成交量大于x" => (206, bigger(queryNumbers(0)))
+      case "成交量小于x" => (206, smaller(queryNumbers(0)))
+      case "成交量等于x" => (206, equel(queryNumbers(0)))
+      case "成交量大于x小于x" => (206, biggerAndSmaller(queryNumbers.slice(0, 2)))
 
-      case "成交额大于x万" => (207, bigger(queryNumbers(0)))
-      case "成交额小于x万" => (207, smaller(queryNumbers(0)))
-      case "成交额等于x万" => (207, equel(queryNumbers(0)))
-      case "成交额大于x万小于x万" => (207, biggerAndSmaller(queryNumbers.slice(0, 2)))
+      case "成交额大于x" => (207, bigger(queryNumbers(0)))
+      case "成交额小于x" => (207, smaller(queryNumbers(0)))
+      case "成交额等于x" => (207, equel(queryNumbers(0)))
+      case "成交额大于x小于x" => (207, biggerAndSmaller(queryNumbers.slice(0, 2)))
 
       case "股价大于x元" => (208, bigger(queryNumbers(0)))
       case "股价小于x元" => (208, smaller(queryNumbers(0)))
@@ -204,12 +232,17 @@ object Rules {
       case "收益率等于x%" => (209, equel(queryNumbers(0)))
       case "收益率大于x%小于x%" => (209, biggerAndSmaller(queryNumbers.slice(0, 2)))
 
-      case "日均查看热度离均差（MAx）大于x倍前x天日均热度标准差" => (210, s"${queryNumbers(1)},${queryNumbers(0)},${queryNumbers(2)}")
+      case "日均查看热度离均差大于x倍前x天日均热度标准差" =>
+        (210, s"${queryNumbers(0)},${queryNumbers(1)},${queryNumbers(1)}")
+      case "日均查看热度离均差大于x倍前x天日均热度标准差的行业" =>
+        (211, s"${queryNumbers(0)},${queryNumbers(1)},${queryNumbers(1)}")
+      case "x到x之间的查看热度大于x倍前x天日均热度标准差" =>
+        (212, s"${dateProcess(queryNumbers.slice(0, 2))},${queryNumbers(2)},${queryNumbers(3)},${queryNumbers(3)}")
 
-      case "资金流入大于x万" => (301, bigger(queryNumbers(0)))
-      case "资金流入小于x万" => (301, smaller(queryNumbers(0)))
-      case "资金流入等于x万" => (301, equel(queryNumbers(0)))
-      case "资金流入大于x万小于x万" => (301, biggerAndSmaller(queryNumbers.slice(0, 2)))
+      case "资金流入大于x" => (301, bigger(queryNumbers(0)))
+      case "资金流入小于x" => (301, smaller(queryNumbers(0)))
+      case "资金流入等于x" => (301, equel(queryNumbers(0)))
+      case "资金流入大于x小于x" => (301, biggerAndSmaller(queryNumbers.slice(0, 2)))
 
       // 消息面数据
       case "新闻访问热度每天大于x次" => (401, bigger(queryNumbers(0)))

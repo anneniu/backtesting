@@ -3,7 +3,7 @@ package com.kunyandata.backtesting.filter
 import com.kunyandata.backtesting.config.Configuration
 import com.kunyandata.backtesting.io.RedisHandler
 import com.kunyandata.backtesting.util.CommonUtil
-import org.scalatest.{Matchers, FlatSpec}
+import org.scalatest.{FlatSpec, Matchers}
 import redis.clients.jedis.Jedis
 
 import scala.collection.mutable.ArrayBuffer
@@ -11,7 +11,7 @@ import scala.collection.mutable.ArrayBuffer
 /**
   * Created by sijiansheng on 2016/9/22.
   */
-class StandardDeviationFilterTest extends FlatSpec with Matchers {
+class VariousDateStandardDeviationFilterTest extends FlatSpec with Matchers {
 
   it should "return a result that is equal the redis data" in {
 
@@ -21,7 +21,6 @@ class StandardDeviationFilterTest extends FlatSpec with Matchers {
     val redisMap = config._1
     RedisHandler.init(redisMap.get("ip").get, redisMap.get("port").get.toInt, redisMap.get("auth").get, redisMap.get("db").get.toInt)
     val jedis = RedisHandler.getInstance().getJedis
-
     //        val prefix = "count_heat_"
     val prefix = "industry_heat_"
     var meanPrefix = ""
@@ -32,41 +31,51 @@ class StandardDeviationFilterTest extends FlatSpec with Matchers {
       stdPrefix = "industry_"
     }
 
-    val offset = -10
-    val multiple = 3
+    val startOffset = -50
+    val endOffset = -9
+    val multiple = 2
     val cirterions = List(7, 10, 14, 15)
 
     for (cirterion <- cirterions) {
 
       val meanCriterion = cirterion
       val stdCriterion = cirterion
-      val result = StandardDeviationFilter(prefix, multiple, meanCriterion, stdCriterion, offset).filter()
+      val result = VariousDateStandardDeviationFilter(prefix, multiple, meanCriterion, stdCriterion, startOffset, endOffset).filter()
 
       for (code <- result) {
 
-        println(code)
-        val date = CommonUtil.getDateStr(offset)
-        val score = jedis.zscore(prefix + date, code)
-        val redisStd = jedis.zscore(stdPrefix + "heat_std_" + meanCriterion + "_" + date, code)
-        val redisMean = jedis.zscore(meanPrefix + "heat_mean_" + meanCriterion + "_" + date, code)
-        val newMeanAndStd = getMeanAndStd(meanCriterion, stdCriterion, jedis, offset, prefix, code)
+        val tempCell = code.split("->")
+        val stockOrIndustry = tempCell(0)
+        val dates = tempCell(1).split(",").toList
+        val offset = dates.map(date => CommonUtil.getOffset(date))
 
-        val newMean = newMeanAndStd._1
-        val newStd = newMeanAndStd._2
+        for (offset <- offset) {
 
-        if (newMean.isEmpty || newStd.isEmpty) {
-          System.exit(0)
+          println(offset)
+          println(stockOrIndustry)
+          val date = CommonUtil.getDateStr(offset)
+          val score = jedis.zscore(prefix + date, stockOrIndustry)
+          val redisStd = jedis.zscore(stdPrefix + "heat_std_" + meanCriterion + "_" + date, stockOrIndustry)
+          val redisMean = jedis.zscore(meanPrefix + "heat_mean_" + meanCriterion + "_" + date, stockOrIndustry)
+          val newMeanAndStd = getMeanAndStd(meanCriterion, stdCriterion, jedis, offset, prefix, stockOrIndustry)
+
+          val newMean = newMeanAndStd._1
+          val newStd = newMeanAndStd._2
+
+          if (newMean.isEmpty || newStd.isEmpty) {
+            println("redis中标准差或者平均值为空")
+            System.exit(1)
+          }
+
+          f"$redisMean%.6f" should be(f"${newMean.get}%.6f")
+          f"$redisStd%.6f" should be(f"${newStd.get}%.6f")
+
+          val lastResult = redisMean + multiple * redisStd
+          val compareResult = score - lastResult
+
+          compareResult.toInt should be >= 0
         }
 
-        println(redisMean)
-        println(newMean.get)
-        f"$redisMean%.6f" should be(f"${newMean.get}%.6f")
-        f"$redisStd%.6f" should be(f"${newStd.get}%.6f")
-
-        val lastResult = redisMean + multiple * redisStd
-        val compareResult = score - lastResult
-
-        compareResult.toInt should be >= 0
       }
 
     }
